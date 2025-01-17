@@ -1,6 +1,5 @@
 import re
 import pandas as pd
-import numpy as np
 from PyPDF2 import PdfReader
 
 nome_arquivo_ficha = 'ficha-financeira.pdf'
@@ -32,36 +31,31 @@ def remover_pontos_do_cpf(cpf: str) -> str:
     return cpf.replace('.', '').replace('-', '')
 
 
-vantagens_regex = r"(\d{3})\s([A-Z-/.\s()+0-9]+)\s(\d+,\d+)"
-referencia_regex = r"Referência:\s([01][\d]\/[\d]{4})"
-vantagens = []
-referencias = []
+dados = []
 for pagina in paginas:
     texto_pagina = pagina.extract_text()
-    resultado_vantagens = re.findall(vantagens_regex, texto_pagina)
-    resultado_referencias = re.findall(referencia_regex, texto_pagina)
-    for vantagem in resultado_vantagens:
-        vantagens.append(vantagem)
-    for referencia in resultado_referencias:
-        referencias.append(referencia)
+    resultados = re.findall(r'Referência:\s([01][\d]\/[\d]{4})|(\d{3})\s([A-Z-/.\s()+0-9]+)\s(\d+,\d+)', texto_pagina)
+    dados.append(resultados)
 
-dados = np.array(vantagens)
-df_ficha = pd.DataFrame(dados, columns=['codigo', 'nome', 'valor'])
+lista_dados = []
+for itens_pagina in dados:
+    for item in itens_pagina:
+        lista_dados.append(item)
+
+linhas = []
+referencia_atual = None
+for registro in lista_dados:
+    if registro[0]:
+        referencia_atual = registro[0]
+        continue
+    linhas.append((referencia_atual, *registro[1:]))
+
+colunas = ['referencia', 'codigo', 'nome', 'valor']
+df_ficha = pd.DataFrame(linhas, columns=colunas)
 
 # converte coluna 'valor' para numeros
 df_ficha['valor'] = df_ficha['valor'].str.replace('.', '')
 df_ficha['valor'] = pd.to_numeric(df_ficha['valor'].str.replace(',', '.'))
-
-# adiciona coluna 'referencia'
-indice_atual = -1
-coluna_referencia = []
-for codigo in df_ficha['codigo']:
-    if codigo in ('109', '100', '104'):
-        indice_atual += 1
-        coluna_referencia.append(referencias[indice_atual])
-    else:
-        coluna_referencia.append(referencias[indice_atual])
-df_ficha['referencia'] = coluna_referencia
 
 codigos_vantagens = ('109', '113', '115', '127', '131', '182', '203', '119')
 soma_por_mes = df_ficha[df_ficha['codigo'].isin(codigos_vantagens)].groupby(['referencia'], sort=False, as_index=False).sum()[['referencia', 'valor']]
